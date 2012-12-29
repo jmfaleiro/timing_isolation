@@ -21,19 +21,20 @@ alloc_mem(size_t size, int socket)
   numa_set_strict(1);
   char * buf = numa_alloc_onnode(size, socket);
   int temp = 0;
+  
+  if(buf == NULL)    
+    fprintf(stderr, "Coudln't allocate memory on node %d\n", socket);  
 
   if ((temp = mlock(buf, size)) < 0){
     
     fprintf(stderr, "mlock couldn't lock memory to the CPU %d\n", socket);
     fprintf(stderr, "%s\n",strerror(errno));
+    exit(0);
   }
 
   int i;
   for(i = 0; i < size; ++i)
     buf[i] = 0;
-  
-  if (temp)
-    buf = NULL;
   
   return buf;      
 }
