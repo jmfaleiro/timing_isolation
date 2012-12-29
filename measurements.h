@@ -1,9 +1,9 @@
 #ifndef MEASUREMENTS_H
 #define MEASUREMENTS_H
 
-#define CACHE_SIZE 1000
-#define MEM_SIZE 1000
-#define RANDOM_SIZE 1000
+#define CACHE_SIZE 24*(1<<20)
+#define MEM_SIZE 1<<20
+#define RANDOM_SIZE 24*(1<<29)
 
 #include <inttypes.h>
 
