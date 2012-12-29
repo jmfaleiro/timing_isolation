@@ -43,5 +43,8 @@ pinThread(int socket);
 void* 
 runTest(void *arg);
 
+extern int
+flush;
+
 
 #endif

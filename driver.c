@@ -10,6 +10,8 @@
 #include "commands.h"
 
 int retries;
+int flush;
+
 
 List * insert(List *start, char *val)
 {
@@ -41,7 +43,8 @@ str2int(char *str)
 int main(int argc, char **argv)
 {
   retries = -1;
-  const char *optString = "t:r:n:";
+  flush = 0;
+  const char *optString = "t:r:n:f";
   List* tests = NULL;
   List* randoms = NULL;
   int opt;
@@ -62,6 +65,10 @@ int main(int argc, char **argv)
       if (retries >= 0)
 	errorArg();
       retries = str2int(optarg);
+      break;
+     
+    case 'f':
+      flush = 1;
       break;
       
     case '?':

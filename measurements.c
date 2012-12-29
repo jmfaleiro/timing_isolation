@@ -181,11 +181,16 @@ void * runTest(void *arg)
   uint32_t *randoms = genRandoms(from, retries);
   char *mem = (char *)alloc_mem(MEM_SIZE, to);
 
-  flushCommand toFlushCommand;  
-  if (from != to)    
-    toFlushCommand = initFlushCommand(to, CACHE_SIZE);
+  flushCommand toFlushCommand;
+  flushCommand fromFlushCommand;
 
-  flushCommand fromFlushCommand = initFlushCommand(from, CACHE_SIZE);
+  if (flush){    
+
+    if (from != to)    
+      toFlushCommand = initFlushCommand(to, CACHE_SIZE);
+    fromFlushCommand = initFlushCommand(from, CACHE_SIZE);
+  }
+
 
   uint64_t *results = (uint64_t *)alloc_mem(sizeof(uint64_t) * retries, from);
   
@@ -195,10 +200,12 @@ void * runTest(void *arg)
   for(i = 0; i < retries; ++i){
     
     // First flush both caches, we want to do memory reads
-    if(from != to)
-      pthread_create(&toThread, NULL, flushCache, (void *)(&toFlushCommand));
-    
-    flushCacheInner(fromFlushCommand.size, fromFlushCommand.socket, fromFlushCommand.buf);
+    if (flush){
+      
+      if(from != to)
+	pthread_create(&toThread, NULL, flushCache, (void *)(&toFlushCommand));    
+      flushCacheInner(fromFlushCommand.size, fromFlushCommand.socket, fromFlushCommand.buf);
+    }
     
     if(from != to)
       pthread_join(toThread, NULL);
