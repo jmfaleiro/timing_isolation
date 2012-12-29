@@ -32,7 +32,7 @@ int
 str2int(char *str)
 {
   int ret = 0;
-  while(str)
+  while(*str != '\0')
     ret = 10*ret + (*(str++) - '0');
 
   return ret;
@@ -41,12 +41,12 @@ str2int(char *str)
 int main(int argc, char **argv)
 {
   retries = -1;
-  const char *optString = "t:r:n";
+  const char *optString = "t:r:n:";
   List* tests = NULL;
   List* randoms = NULL;
-  int opt = getopt(argc, argv, optString);
+  int opt;
   
-  while(opt!= -1){
+  while((opt = getopt(argc, argv, optString)) != -1){
     
     switch(opt) {
       
@@ -63,13 +63,14 @@ int main(int argc, char **argv)
 	errorArg();
       retries = str2int(optarg);
       break;
+      
     case '?':
       errorArg();
       break;
       
     default:
       break;
-    }
+    }    
   }
 
   if(retries < 0)
