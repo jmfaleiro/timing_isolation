@@ -17,7 +17,23 @@ void*
 alloc_mem(size_t size, int socket)
 {
   numa_set_strict(1);
-  numa_alloc_onnode(size, socket);
+  char * buf = numa_alloc_onnode(size, socket);
+  int temp = 0;
+
+  if ((temp = mlock(buf, size)) < 0){
+    
+    fprintf(stderr, "mlock couldn't lock memory to the CPU %d\n", socket);
+    fprintf(stderr, "%s\n",strerror(errno));
+  }
+
+  int i;
+  for(i = 0; i < size; ++i)
+    ret[i] = 0;
+  
+  if (temp)
+    ret = NULL;
+  
+  return ret;      
 }
 
 uint32_t*
