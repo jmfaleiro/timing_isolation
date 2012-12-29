@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <numa.h>
 #include <inttypes.h>
+#include <string.h>
+#include <errno.h>
 
 #include "commands.h"
 #include "measurements.h"
@@ -28,12 +30,12 @@ alloc_mem(size_t size, int socket)
 
   int i;
   for(i = 0; i < size; ++i)
-    ret[i] = 0;
+    buf[i] = 0;
   
   if (temp)
-    ret = NULL;
+    buf = NULL;
   
-  return ret;      
+  return buf;      
 }
 
 uint32_t*
