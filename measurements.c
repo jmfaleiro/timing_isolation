@@ -5,6 +5,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/mman.h>
 
 #include "commands.h"
 #include "measurements.h"
@@ -13,6 +14,65 @@ inline void serialize()
 {
   asm volatile("cpuid\n\t":::
 	       "%rax", "%rbx", "%rcx", "%rdx");	       
+}
+
+// Wrapper to allocate a huge page.
+// Don't want to do a membind initially because
+// children will be constrained by the same
+// policy. We do a membind only when we are
+// at "leaf" children.
+
+void*
+alloc_huge_pages(size_t size, int socket)
+{
+  pthread_t thread;
+  void *addr;
+  
+  allocCommand cmd;
+  cmd.size = size;
+  cmd.socket = socket;
+
+  pthread_create(&thread, NULL, alloc_huge_pages_inner, (void *) &cmd);
+  pthread_join(thread, (void **) &addr);
+  
+  return addr;
+}
+
+
+// This is the actual huge_page allocation function.
+
+void*
+alloc_huge_pages_inner(void * huge_cmd)
+{
+  // Make sure we're executing and allocating on the 
+  // socket we want.
+
+  int socket = ((allocCommand *)huge_cmd)->socket;
+  size_t size = ((allocCommand *)huge_cmd)->size;
+  
+  char digits[10];
+  sprintf(digits, "%d", socket);
+  
+  struct bitmask *digitMask = numa_parse_cpustring(digits);
+
+  pinThread(socket);
+  numa_set_membind(digitMask);  
+  numa_set_strict(1);
+  
+  void *ret = mmap(MMAP_ADDR, size, MMAP_PROT, MMAP_FLAGS, 0, 0);
+
+  if (ret == MAP_FAILED){
+    
+    fprintf(stderr, "Couldn't allocate a huge page.\n");
+    exit(0);
+  }
+  return ret;  
+}
+
+void
+unalloc_huge_pages(void *addr, size_t size)
+{
+  munmap(addr, size);
 }
 
 void*
@@ -175,11 +235,12 @@ void * runTest(void *arg)
   int from = ((testCommand *)arg)->from;
   int to = ((testCommand *)arg)->to;
   int retries = ((testCommand *)arg)->retries;  
+  uint32_t* randoms = ((testCommand *)arg)->randoms;
+  int hops = ((testCommand *)arg)->hops;
 
   pinThread(from);
 
-  uint32_t *randoms = genRandoms(from, retries);
-  char *mem = (char *)alloc_mem(MEM_SIZE, to);
+  char *mem = (char *)alloc_huge_pages(MEM_SIZE, to);
 
   flushCommand toFlushCommand;
   flushCommand fromFlushCommand;
@@ -192,7 +253,7 @@ void * runTest(void *arg)
   }
 
 
-  uint64_t *results = (uint64_t *)alloc_mem(sizeof(uint64_t) * retries, from);
+  uint64_t *results = (uint64_t *)alloc_mem(sizeof(uint64_t) * retries * hops, from);
   
   pthread_t toThread, fromThread;
 
@@ -202,19 +263,26 @@ void * runTest(void *arg)
     // First flush both caches, we want to do memory reads
     if (flush){
       
-      if(from != to)
+      if(from != to){
 	pthread_create(&toThread, NULL, flushCache, (void *)(&toFlushCommand));    
+	fprintf(stderr, "Starting the remote flushing routine\n");
+      }
       flushCacheInner(fromFlushCommand.size, fromFlushCommand.socket, fromFlushCommand.buf);
     }
     
     if(from != to)
       pthread_join(toThread, NULL);
     
-    uint32_t index = randoms[i] % MEM_SIZE;
-    char temp;
-    results[i] = latencySingle(mem+index, &temp);    
+    int j;
+    for(j = 0; j < hops; ++j){
+      
+      uint32_t index = randoms[i*hops + j] % MEM_SIZE;
+      char temp;
+      results[i*hops + j] = latencySingle(mem+index, &temp);    
+    }
   }
-  
+
+  unalloc_huge_pages(mem, MEM_SIZE);  
   return results;
 }
 

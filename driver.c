@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <numa.h>
 
 #include "driver.h"
 #include "commands.h"
@@ -42,6 +43,7 @@ str2int(char *str)
 
 int main(int argc, char **argv)
 {
+  srand(10007);
   retries = -1;
   flush = 0;
   const char *optString = "t:r:n:f";
@@ -131,6 +133,8 @@ startRandoms(List *randoms, pthread_t **randomThreads, testCommand **randomComma
     // set-up the commands
     (*randomCommands)[i].to = to;
     (*randomCommands)[i].from = from;
+    (*randomCommands)[i].randoms = NULL;
+    (*randomCommands)[i].retries = 0;
     
     // Go!
     pthread_create((*randomThreads)+i, NULL, randomActivity, (void *) ((*randomCommands)+i));    
@@ -140,6 +144,61 @@ startRandoms(List *randoms, pthread_t **randomThreads, testCommand **randomComma
   }
 
   return randomSize;
+}
+
+// Generate random indices to hop.
+// We need to bypass cache-line prefetching. 
+uint32_t*
+genIndices(int numTests, int socket)
+{
+  uint32_t *mem = (uint32_t *)alloc_mem(sizeof(uint32_t)*numTests*HOPS, socket);  
+
+  int i, j;
+
+  for(i = 0; i < numTests; ++i){
+    
+    uint32_t temps[HOPS];    
+    for(j = 0; j < HOPS; ++j){   
+      
+      temps[j] = genNextIndex(temps, j);
+      mem[HOPS*i + j] = temps[j];
+    }
+  }
+  
+  return mem;
+}
+
+uint32_t
+genNextIndex(int *acc, int numDone)
+{
+  while(1){
+    
+    uint32_t myRand = rand();
+    if (isValidIndex(acc, numDone, myRand))
+      return myRand;
+  }
+}
+
+
+int
+isValidIndex(int *acc, int numDone, int curr)
+{
+  int interval = HALF_INTERVAL*LINE_SIZE;
+  int i;
+  
+  int currIndex = curr % MEM_SIZE;
+  
+  for(i = 0; i < numDone; ++i){
+    
+    int lowerBound = (acc[i] - interval) % MEM_SIZE;
+    int upperBound = (acc[i] + interval) % MEM_SIZE;
+
+    if ((currIndex >= lowerBound) &&
+	(currIndex < upperBound))
+      return 0;
+  }
+  
+  return 1;
 }
 
 void
@@ -164,6 +223,8 @@ startTests(List *tests)
     testCommands[i].to = to;
     testCommands[i].from = from;
     testCommands[i].retries = retries;
+    testCommands[i].randoms = genIndices(retries, from);
+    testCommands[i].hops = HOPS;
     
     // Go!
     pthread_create(testThreads+i, NULL, runTest, (void *) (testCommands+i));    

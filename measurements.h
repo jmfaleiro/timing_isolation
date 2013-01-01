@@ -1,11 +1,26 @@
 #ifndef MEASUREMENTS_H
 #define MEASUREMENTS_H
 
-#define CACHE_SIZE 24*(1<<20)
-#define MEM_SIZE 1<<20
-#define RANDOM_SIZE 24*(1<<29)
+#include <sys/mman.h>
+
+#ifndef MAP_HUGETLB
+#define MAP_HUGETLB 0x40000
+#endif
+
+#define MMAP_FLAGS (MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_FIXED)
+#define MMAP_PROT (PROT_READ | PROT_WRITE)
+#define MMAP_ADDR (void *)(0x8000000000000000UL)
 
 #include <inttypes.h>
+
+void*
+alloc_huge_pages(size_t size, int socket);
+
+void*
+alloc_huge_pages_inner(void* huge_cmd);
+
+void
+unalloc_huge_pages(void* addr, size_t size);
 
 void
 serialize();
