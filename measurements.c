@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <fcntl.h>
 
 #include "commands.h"
 #include "measurements.h"
@@ -63,7 +64,7 @@ alloc_huge_pages_inner(void * huge_cmd)
 
   if (ret == MAP_FAILED){
     
-    fprintf(stderr, "Couldn't allocate a huge page.\n");
+    fprintf(stderr, "Couldn't allocate a huge page: %s\n", strerror(errno));
     exit(0);
   }
   return ret;  

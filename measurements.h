@@ -7,9 +7,9 @@
 #define MAP_HUGETLB 0x40000
 #endif
 
-#define MMAP_FLAGS (MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_FIXED)
+#define MMAP_FLAGS (MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB)
 #define MMAP_PROT (PROT_READ | PROT_WRITE)
-#define MMAP_ADDR (void *)(0x8000000000000000UL)
+#define MMAP_ADDR (void *)(0x0UL)
 
 #include <inttypes.h>
 

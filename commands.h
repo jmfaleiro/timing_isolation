@@ -2,7 +2,7 @@
 #define COMMANDS_HH
 
 #define CACHE_SIZE 24*(1<<20)
-#define MEM_SIZE 1<<20
+#define MEM_SIZE 1<<21
 #define RANDOM_SIZE 24*(1<<29)
 #define HALF_INTERVAL 3
 
