@@ -257,7 +257,8 @@ writeAnswers(int from, int to, uint64_t *results)
   fprintf(fp, "From %d, to %d\n", from, to);
     
   for(i=0; i<retries; ++i)    
-    fprintf(fp, "%"PRIu64"\n", results[i]);
+    for(j=0; j<HOPS; ++j)
+      fprintf(fp, "%"PRIu64"\n", results[i*HOPS + j]);
     
   fprintf(fp, "\n\n");  
   fclose(fp);          
