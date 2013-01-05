@@ -5,9 +5,6 @@
 #include <pthread.h>
 #include "commands.h"
 
-#define HOPS 100
-#define LINE_SIZE 64
-
 struct list;
 
 struct list {
@@ -18,15 +15,17 @@ struct list {
 
 typedef struct list List;
 
+int
+withinBoundary(uint32_t index, uint32_t val);
 
 uint32_t*
 genIndices(int numTests, int socket);
 
 uint32_t
-genNextIndex(int *acc, int numDone);
+genNextIndex(uint32_t *acc, int numDone);
 
 int
-isValidIndex(int *acc, int numDone, int curr);
+isValidIndex(uint32_t *acc, int numDone, uint32_t curr);
 
 List* 
 insert(List *start, char *val);
@@ -50,7 +49,7 @@ void
 startTests(List *tests);
 
 void
-writeAnswers(int from, int to, uint64_t *results);
+writeAnswers(int from, int to, long double *results);
 
 void
 run(List *tests, List *randoms);
@@ -64,5 +63,7 @@ randomActivity(void *arg);
 extern void*
 alloc_mem(size_t size, int socket);
 
+extern void*
+runTestSecond(void *arg);
 
 #endif

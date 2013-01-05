@@ -41,9 +41,9 @@ str2int(char *str)
   return ret;
 }
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
-  srand(10007);
   retries = -1;
   flush = 0;
   const char *optString = "t:r:n:f";
@@ -86,6 +86,7 @@ int main(int argc, char **argv)
     errorArg();
   
   run(tests, randoms);
+  return 0;
 }
 
 int
@@ -151,29 +152,71 @@ startRandoms(List *randoms, pthread_t **randomThreads, testCommand **randomComma
 uint32_t*
 genIndices(int numTests, int socket)
 {
-  uint32_t *mem = (uint32_t *)alloc_mem(sizeof(uint32_t)*numTests*HOPS, socket);  
+  uint32_t *mem = (uint32_t *)alloc_mem(sizeof(uint32_t)*numTests*(HOPS+1), socket);  
 
   int i, j;
 
   for(i = 0; i < numTests; ++i){
     
-    uint32_t temps[HOPS];    
-    for(j = 0; j < HOPS; ++j){   
+    uint32_t temps[HOPS+1];    
+    for(j = 0; j < HOPS+1; ++j){   
       
       temps[j] = genNextIndex(temps, j);
-      mem[HOPS*i + j] = temps[j];
+      mem[(HOPS+1)*i + j] = temps[j];
     }
   }
   
   return mem;
 }
 
+
+uint32_t*
+genIndicesHops(int socket)
+{
+  uint32_t* mem = (uint32_t *)alloc_mem(sizeof(uint32_t)*(HOPS+1), socket);
+
+  int i;
+  uint32_t *temps = (uint32_t *)malloc(sizeof (uint32_t) * (HOPS+1));
+  for(i = 0; i < HOPS+1; ++i){
+    
+    if (flush)
+      temps[i] = genNextIndex(temps, i);
+    else
+      temps[i] = 0;
+    mem[i] = temps[i];
+    //printf("0x%08x\n", temps[i]);
+  }
+  
+  free(temps);
+  return mem;
+}
+
+int
+withinBoundary(uint32_t index, uint32_t val)
+{
+  uint32_t error = HALF_INTERVAL * LINE_SIZE;
+
+  uint32_t min = (val - error) % MEM_SIZE;
+  uint32_t max = (val + error) % MEM_SIZE;
+
+  if (min > max){
+    
+    if ((val % MEM_SIZE)  > (MEM_SIZE >> 1))
+      return index < min;
+    else
+      return index >= max;
+  }
+  
+  else
+    return (index < min) || (index >= max);
+}
+
 uint32_t
-genNextIndex(int *acc, int numDone)
+genNextIndex(uint32_t *acc, int numDone)
 {
   while(1){
     
-    uint32_t myRand = rand();
+    uint32_t myRand = (rand() & ~((uint32_t) 3)) % MEM_SIZE;
     if (isValidIndex(acc, numDone, myRand))
       return myRand;
   }
@@ -181,20 +224,12 @@ genNextIndex(int *acc, int numDone)
 
 
 int
-isValidIndex(int *acc, int numDone, int curr)
+isValidIndex(uint32_t *acc, int numDone, uint32_t curr)
 {
-  int interval = HALF_INTERVAL*LINE_SIZE;
   int i;
-  
-  int currIndex = curr % MEM_SIZE;
-  
   for(i = 0; i < numDone; ++i){
     
-    int lowerBound = (acc[i] - interval) % MEM_SIZE;
-    int upperBound = (acc[i] + interval) % MEM_SIZE;
-
-    if ((currIndex >= lowerBound) &&
-	(currIndex < upperBound))
+    if(!withinBoundary(curr, acc[i]))
       return 0;
   }
   
@@ -206,7 +241,7 @@ startTests(List *tests)
 {
   int i = 0;
   int testsSize = listSize(tests, 0);
-  uint64_t ** results = (uint64_t **)malloc(sizeof(uint64_t)*testsSize);
+  long double ** results = (long double **)malloc(sizeof(uint64_t)*testsSize);
 
   pthread_t *testThreads = (pthread_t *)malloc(sizeof(pthread_t) * testsSize);
   testCommand *testCommands = (testCommand *)malloc(sizeof(testCommand) * testsSize);
@@ -223,11 +258,11 @@ startTests(List *tests)
     testCommands[i].to = to;
     testCommands[i].from = from;
     testCommands[i].retries = retries;
-    testCommands[i].randoms = genIndices(retries, from);
-    testCommands[i].hops = HOPS;
+    testCommands[i].randoms = genIndicesHops(from);
+    testCommands[i].hops = HOPS+1;
     
     // Go!
-    pthread_create(testThreads+i, NULL, runTest, (void *) (testCommands+i));    
+    pthread_create(testThreads+i, NULL, runTestSecond, (void *) (testCommands+i));    
     
     tests = tests->next;
     ++i;
@@ -244,7 +279,7 @@ startTests(List *tests)
 
 
 void
-writeAnswers(int from, int to, uint64_t *results)
+writeAnswers(int from, int to, long double *results)
 {
   FILE *fp; 
   char filename[30];
@@ -253,12 +288,11 @@ writeAnswers(int from, int to, uint64_t *results)
   if((fp = fopen(filename, "w")) == NULL)
     fprintf(stderr, "Error while opening output file \n%s\n", strerror(errno));
  
-  int i, j;
+  int i;
   fprintf(fp, "From %d, to %d\n", from, to);
     
   for(i=0; i<retries; ++i)    
-    for(j=0; j<HOPS; ++j)
-      fprintf(fp, "%"PRIu64"\n", results[i*HOPS + j]);
+    fprintf(fp, "%Lg\n", results[i]);
     
   fprintf(fp, "\n\n");  
   fclose(fp);          

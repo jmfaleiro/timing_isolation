@@ -7,11 +7,19 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <numaif.h>
 
 #include "commands.h"
 #include "measurements.h"
 
-inline void serialize()
+#define MAXNODES 8
+
+static inline void serialize() __attribute__((always_inline));
+static inline uint64_t readStart() __attribute__((always_inline));
+static inline uint64_t readEnd() __attribute__((always_inline));
+
+
+static inline void serialize () 
 {
   asm volatile("cpuid\n\t":::
 	       "%rax", "%rbx", "%rcx", "%rdx");	       
@@ -54,10 +62,8 @@ alloc_huge_pages_inner(void * huge_cmd)
   char digits[10];
   sprintf(digits, "%d", socket);
   
-  struct bitmask *digitMask = numa_parse_cpustring(digits);
 
   pinThread(socket);
-  numa_set_membind(digitMask);  
   numa_set_strict(1);
   
   void *ret = mmap(MMAP_ADDR, size, MMAP_PROT, MMAP_FLAGS, 0, 0);
@@ -67,6 +73,24 @@ alloc_huge_pages_inner(void * huge_cmd)
     fprintf(stderr, "Couldn't allocate a huge page: %s\n", strerror(errno));
     exit(0);
   }
+  
+  
+  unsigned long mask[MAXNODES] = {0};
+  mask[socket] = 1;
+  /*
+  if (mbind(ret, size, MPOL_BIND, mask, MAXNODES, 0) < 0){
+    
+    fprintf(stderr, "mbind failed: %s\n", strerror(errno));
+    exit(0);
+  }
+  */
+  int upper = size / sizeof(uint32_t);
+  uint32_t* init = (uint32_t *)ret;
+  int i;
+
+  for(i = 0; i < upper; ++i)
+    init[i] = i;
+
   return ret;  
 }
 
@@ -83,8 +107,11 @@ alloc_mem(size_t size, int socket)
   char * buf = numa_alloc_onnode(size, socket);
   int temp = 0;
   
-  if(buf == NULL)    
+  if(buf == NULL){    
     fprintf(stderr, "Coudln't allocate memory on node %d\n", socket);  
+    fprintf(stderr, "%s\n", strerror(errno));
+    exit(0);
+  }
 
   if ((temp = mlock(buf, size)) < 0){
     
@@ -130,7 +157,7 @@ flushCache(void *arg)
   return NULL;
 }
 
-void flushCacheInner(uint64_t size, int socket, char *ptr)
+void flushCacheInner(uint64_t size, int socket, char volatile *ptr)
 {
   pinThread(socket);
   serialize();
@@ -142,7 +169,7 @@ void flushCacheInner(uint64_t size, int socket, char *ptr)
   serialize();
 }
 
-inline uint64_t readStart()
+static inline uint64_t readStart()
 {
   uint32_t cyclesHigh, cyclesLow;
 
@@ -157,7 +184,7 @@ inline uint64_t readStart()
   return (((uint64_t)cyclesHigh<<32) | cyclesLow);
 }
 
-inline uint64_t readEnd()
+static inline uint64_t readEnd()
 {
   uint32_t cyclesHigh, cyclesLow;
   
@@ -185,18 +212,24 @@ flushCommand initFlushCommand(int socket, uint64_t size)
   return ret;
 }
 
-uint64_t latencySingle(char volatile *ptr, char *set)
+long double
+latencySingle(char volatile *ptr, uint32_t *indices, int size, int volatile *set)
 {
   uint64_t start, end;
-  char blah;
-
+  volatile int blah;
+  int i;
+  
+  blah = ptr[0];
+  
   start = readStart();
-  blah = *ptr;
+  for(i = 0; i < size; ++i)    
+    blah += ptr[1+i];
   end = readEnd();
 
   *set = blah;
-  return end - start;  
+  return (end - start) / ((long double)size);
 }
+
 
 void * randomActivity(void *arg)
 {
@@ -229,6 +262,95 @@ void pinThread(int socket)
   }
 }
 
+void
+setupMem(void *mem, uint32_t *indices, int size)
+{
+
+  int i;
+  char *base = (char *)mem;
+  *((char **)mem) = base + indices[0];
+  
+  char **start = (char **)mem;
+  for(i = 0; i < size; ++i){
+    
+    char **temp = (char **)(*start);
+    *temp = base + indices[1+i];
+    start = temp;
+  }  
+}
+
+long double
+latencyHopping(char volatile**mem, char volatile **dummy)
+{
+  uint64_t start, end;
+  char volatile ** begin = (char volatile **) (*mem);
+  
+  start = readStart();
+  THO(begin)  
+  end = readEnd();
+
+  *dummy = *begin;  
+  long double ret = ((long double)(end - start)) / ((long double) HOPS);
+  return ret;
+}
+
+void*
+runTestSecond(void *arg)
+{
+  numa_set_strict(1);
+
+  int from = ((testCommand *)arg)->from;
+  int to = ((testCommand *)arg)->to;
+  int retries = ((testCommand *)arg)->retries;  
+  uint32_t* randoms = ((testCommand *)arg)->randoms;
+  int hops = ((testCommand *)arg)->hops;
+
+  pinThread(from);
+
+  char *mem = (char *)alloc_huge_pages(MEM_SIZE, to);
+
+  flushCommand toFlushCommand;
+  flushCommand fromFlushCommand;
+
+  pthread_t fromThread;
+  pthread_t toThread;
+
+  if (flush){    
+
+    if (from != to)    
+      toFlushCommand = initFlushCommand(to, CACHE_SIZE);
+    fromFlushCommand = initFlushCommand(from, CACHE_SIZE);
+  }
+
+
+  long double *results = (long double *)alloc_mem(sizeof(long double) * retries, from);
+  setupMem(mem, randoms, hops);
+
+  int i;
+  for(i = 0; i < retries; ++i){
+
+    // First flush the cache.
+    if (flush){    
+  
+      // Flush the guy we're reading from.
+      if(from != to)
+	pthread_create(&toThread, NULL, flushCache, (void *)(&toFlushCommand));    
+      
+      pthread_create(&fromThread, NULL, flushCache, (void *)(&fromFlushCommand));
+      
+      pthread_join(toThread, NULL);
+      pthread_join(fromThread, NULL);
+    }
+    
+    char *temp;
+    results[i] = latencyHopping((char volatile **)mem, (char volatile **) &temp);
+  }
+
+  unalloc_huge_pages(mem, MEM_SIZE);
+  return results;
+}
+
+
 void * runTest(void *arg)
 {
   numa_set_strict(1);
@@ -253,10 +375,9 @@ void * runTest(void *arg)
     fromFlushCommand = initFlushCommand(from, CACHE_SIZE);
   }
 
-
-  uint64_t *results = (uint64_t *)alloc_mem(sizeof(uint64_t) * retries * hops, from);
+  long double *results = (long double *)alloc_mem(sizeof(long double) * retries, from);
   
-  pthread_t toThread, fromThread;
+  pthread_t toThread;
 
   int i;
   for(i = 0; i < retries; ++i){
@@ -264,23 +385,18 @@ void * runTest(void *arg)
     // First flush both caches, we want to do memory reads
     if (flush){
       
-      if(from != to){
+      if(from != to)
 	pthread_create(&toThread, NULL, flushCache, (void *)(&toFlushCommand));    
-	fprintf(stderr, "Starting the remote flushing routine\n");
-      }
+
       flushCacheInner(fromFlushCommand.size, fromFlushCommand.socket, fromFlushCommand.buf);
     }
     
     if(from != to)
       pthread_join(toThread, NULL);
     
-    int j;
-    for(j = 0; j < hops; ++j){
-      
-      uint32_t index = randoms[i*hops + j] % MEM_SIZE;
-      char temp;
-      results[i*hops + j] = latencySingle(mem+index, &temp);    
-    }
+    int temp;
+    int index = i*hops;
+    results[i] = latencySingle(mem, randoms+index, hops, &temp);
   }
 
   unalloc_huge_pages(mem, MEM_SIZE);  

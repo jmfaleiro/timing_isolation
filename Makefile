@@ -1,11 +1,11 @@
 mem_test_jose: driver.o measurements.o
-	gcc -g -pthread -lrt driver.o measurements.o -o mem_test_jose -lnuma
+	gcc -g -pthread -O3 -fverbose-asm -Wall -lrt driver.o measurements.o -o mem_test_jose -lnuma
 
 driver.o: driver.c driver.h commands.h
-	gcc -c -g driver.c
+	gcc -c -Wall -O3 -g driver.c
 
 measurements.o: measurements.c measurements.h commands.h
-	gcc -c -g  measurements.c
+	gcc -c -Wall -O3 -g  measurements.c
 
 driver.h: commands.h
 

@@ -13,6 +13,15 @@
 
 #include <inttypes.h>
 
+void
+setupMem(void *mem, uint32_t *indices, int size);
+
+long double
+latencyHopping(char volatile**mem, char volatile **end);
+
+void*
+runTestSecond(void *arg);
+
 void*
 alloc_huge_pages(size_t size, int socket);
 
@@ -21,9 +30,6 @@ alloc_huge_pages_inner(void* huge_cmd);
 
 void
 unalloc_huge_pages(void* addr, size_t size);
-
-void
-serialize();
 
 void* 
 alloc_mem(size_t size, int socket);
@@ -35,19 +41,13 @@ void*
 flushCache(void *arg);
 
 void
-flushCacheInner(uint64_t size, int socket, char *ptr);
-
-uint64_t
-readStart();
-
-uint64_t
-readEnd();
+flushCacheInner(uint64_t size, int socket, char volatile *ptr);
 
 flushCommand
 initFlushCommand(int socket, uint64_t size);
 
-uint64_t
-latencySingle(char volatile *ptr, char *set);
+long double
+latencySingle(char volatile *ptr, uint32_t *indices, int sie, int volatile *set);
 
 void*
 randomActivity(void *arg);
