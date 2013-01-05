@@ -28,6 +28,7 @@ void errorArg()
   fprintf(stderr, "Three options allowed:\n-t from-to => from = socket on which to run thread, to = socket on which to allocate mem\n");
   fprintf(stderr, "-r from-to => same as above, but used for generating traffic, not testing\n");
   fprintf(stderr, "-n num_tests => the number of iterations for the test (specified ***EXACTLY*** once)\n");
+  fprintf(stderr, "-f => flush caches between experiments and generate random indices\n");
   exit(0);
 }
 
